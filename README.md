@@ -57,6 +57,55 @@ Activer l'environnement virtuel :
 source .venv/bin/activate
 ```
 
+## 📊 Résultats — Sélection du modèle (Phase 3)
+
+Le rapport complet de comparaison est disponible dans [`docs/rapport_comparaison_modeles.md`](docs/rapport_comparaison_modeles.md).
+
+**Modèle retenu pour la phase 3 : `models/embedding_model_finetuned.pt`**
+
+| Métrique | Modèle BASE | Modèle FINE-TUNÉ |
+|---|---|---|
+| Recall@1 | ~60 % | **85,5 %** |
+| Recall@5 | ~82 % | **95,9 %** |
+| Accuracy KNN-5 | ~57 % | **84,5 %** |
+| F1-score macro | ~55 % | **84,4 %** |
+
+Architecture : EfficientNet-B2 (backbone gelé) + tête de projection MLP (256D) entraînée avec
+Triplet Loss sur 6 plats ouest-africains (6 586 images).
+
 ## 🧪 Utilisation
 
-_À compléter au fur et à mesure de l'avancement du projet (commandes d'entraînement, d'évaluation, etc.)._
+### Workflow complet
+
+```bash
+# 1. Prétraitement des images brutes
+uv run python main.py prepare
+
+# 2. Génération des embeddings (modèle fine-tuné)
+uv run python main.py embed --checkpoint models/embedding_model_finetuned.pt
+
+# 3. Évaluation — Recall@K
+uv run python scripts/evaluate/compute_recall.py
+
+# 4. Comparaison base vs fine-tuné
+uv run python scripts/evaluate/compare_models.py
+
+# 5. Visualisation t-SNE
+uv run python scripts/evaluate/visualize_embeddings.py
+
+# 6. Prédiction sur une image
+uv run python scripts/evaluate/predict_image.py --image chemin/vers/photo.jpg
+```
+
+### Fine-tuning
+
+```bash
+# Ré-entraîner la tête de projection avec Triplet Loss
+uv run python src/training/finetune_embedding.py
+```
+
+### Informations sur le modèle actif
+
+```bash
+uv run python main.py info
+```
