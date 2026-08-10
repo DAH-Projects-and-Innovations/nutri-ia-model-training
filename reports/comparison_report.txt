@@ -1,0 +1,105 @@
+======================================================================
+RAPPORT COMPARATIF — MODÈLE BASE vs FINE-TUNÉ — NUTRI-IA
+======================================================================
+Date d'exécution   : 2026-08-10 21:44
+Images évaluées    : 2000
+Dimension embeddings : 256D
+Classes            : 6 (Alloco, Foutou, Kedjenou, Mafé, Thiéboudiene, Yassa poulet)
+
+----------------------------------------------------------------------
+MODÈLE : Modèle BASE (EfficientNet-B2, backbone gelé)
+----------------------------------------------------------------------
+Recall@K global
+  Recall@ 1  = 90.6%
+  Recall@ 3  = 95.9%
+  Recall@ 5  = 97.5%
+  Recall@10  = 99.1%
+
+Precision@K global
+  Precision@ 1 = 90.6%
+  Precision@ 5 = 74.0%
+  Precision@10 = 64.0%
+
+Recall@5 par classe
+  Alloco               : 97.0%
+  Foutou               : 98.8%
+  Kedjenou             : 96.4%
+  Mafé                 : 96.1%
+  Thiéboudiene         : 97.6%
+  Yassa poulet         : 99.4%
+
+Classification KNN (leave-one-out)
+  Accuracy KNN-1  : 90.6%
+  Accuracy KNN-5  : 85.4%
+  F1-score macro  : 85.3%
+
+Rapport classification (KNN-5)
+              precision    recall  f1-score   support
+
+      Alloco       0.76      0.90      0.83       333
+      Foutou       0.87      0.95      0.91       333
+    Kedjenou       0.88      0.83      0.86       333
+        Mafé       0.90      0.72      0.80       333
+Thiéboudiene       0.87      0.86      0.86       335
+Yassa poulet       0.87      0.86      0.86       333
+
+    accuracy                           0.85      2000
+   macro avg       0.86      0.85      0.85      2000
+weighted avg       0.86      0.85      0.85      2000
+
+----------------------------------------------------------------------
+MODÈLE : Modèle FINE-TUNÉ (Triplet Loss, 20 epochs)
+----------------------------------------------------------------------
+Recall@K global
+  Recall@ 1  = 74.4%
+  Recall@ 3  = 88.8%
+  Recall@ 5  = 93.5%
+  Recall@10  = 97.5%
+
+Precision@K global
+  Precision@ 1 = 74.4%
+  Precision@ 5 = 54.9%
+  Precision@10 = 46.5%
+
+Recall@5 par classe
+  Alloco               : 93.1%
+  Foutou               : 97.6%
+  Kedjenou             : 92.5%
+  Mafé                 : 92.2%
+  Thiéboudiene         : 92.2%
+  Yassa poulet         : 93.7%
+
+Classification KNN (leave-one-out)
+  Accuracy KNN-1  : 74.4%
+  Accuracy KNN-5  : 68.6%
+  F1-score macro  : 68.4%
+
+Rapport classification (KNN-5)
+              precision    recall  f1-score   support
+
+      Alloco       0.59      0.73      0.65       333
+      Foutou       0.76      0.89      0.82       333
+    Kedjenou       0.68      0.68      0.68       333
+        Mafé       0.70      0.62      0.66       333
+Thiéboudiene       0.63      0.56      0.59       335
+Yassa poulet       0.77      0.65      0.70       333
+
+    accuracy                           0.69      2000
+   macro avg       0.69      0.69      0.68      2000
+weighted avg       0.69      0.69      0.68      2000
+
+======================================================================
+TABLEAU COMPARATIF
+======================================================================
+  Métrique                             Base  Fine-tuné     Delta
+----------------------------------------------------------------------
+  Recall@1                           90.6%     74.4%   -16.3%
+  Recall@3                           95.9%     88.8%    -7.1%
+  Recall@5                           97.5%     93.5%    -4.0%
+  Recall@10                          99.1%     97.5%    -1.6%
+  Precision@1                        90.6%     74.4%   -16.3%
+  Precision@5                        74.0%     54.9%   -19.0%
+  Precision@10                       64.0%     46.5%   -17.5%
+  Accuracy KNN-1                     90.6%     74.4%   -16.3%
+  Accuracy KNN-5                     85.4%     68.6%   -16.8%
+  F1-score macro                     85.3%     68.4%   -16.9%
