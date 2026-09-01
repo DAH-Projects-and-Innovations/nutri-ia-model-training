@@ -1,0 +1,22 @@
+RAPPORT — ResNet50 (Keras, classification, Phase 1 + Phase 2)
+============================================================
+
+Images train/val/test : 4610/988/988
+Classes : ['alloco', 'foutou', 'kedjenou', 'mafe', 'thieboudiene', 'yassa-poulet']
+
+Meilleure val_accuracy Phase 1 : 96.46%
+Meilleure val_accuracy Phase 2 : 98.48%
+
+Rapport de classification (test set) :
+              precision    recall  f1-score   support
+
+      alloco       0.99      1.00      1.00       165
+      foutou       0.95      0.99      0.97       165
+    kedjenou       0.99      0.96      0.98       165
+        mafe       0.96      0.96      0.96       163
+thieboudiene       0.98      1.00      0.99       165
+yassa-poulet       1.00      0.96      0.98       165
+
+    accuracy                           0.98       988
+   macro avg       0.98      0.98      0.98       988
+weighted avg       0.98      0.98      0.98       988

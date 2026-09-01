@@ -9,11 +9,27 @@ ni les images brutes/augmentées d'entraînement.
 
 - `fine_tuning_efficientnet.ipynb`, `fine_tuning_mobilenet_V2.ipynb`, `fine_tuning_resnet.ipynb`
   — fine-tuning **Keras/TensorFlow** (classification softmax, 6 classes) de trois backbones :
-  EfficientNetB0, ResNet, MobileNetV2.
+  EfficientNetB0, ResNet50, MobileNetV2.
 - `courbes_entrainement*.png`, `matrice_confusion*.png` — courbes et matrices de confusion
   correspondantes.
-- `models/*.keras` — checkpoints entraînés (val_accuracy ≈ 77–86 % selon le run, voir les
-  notebooks pour le détail epoch par epoch).
+- `models/*_phase1.keras` — checkpoint après la Phase 1 (backbone gelé, seule la tête est
+  entraînée). `models/*_finetuned.keras` — checkpoint après la Phase 2 (dernières couches du
+  backbone dégelées, LR très faible) : c'est celui-ci qui fait foi comme résultat final.
+- `models/*_classes.json` — ordre des classes correspondant aux index de sortie de chaque
+  modèle (nécessaire pour interpréter les prédictions).
+- `../reports/keras_*_report.txt` — rapport de classification (test set) pour chaque
+  architecture, dans le même esprit que `reports/recall_report.txt` côté embeddings.
+
+Chaque notebook fait maintenant un vrai split **train/val/test (70/15/15) stratifié par
+classe**, entraîne en deux temps (Phase 1 : tête seule, backbone gelé — Phase 2 : dégel des
+20 dernières couches du backbone à LR=1e-5), et évalue la métrique finale sur le test set
+(jamais vu par `EarlyStopping`/`ReduceLROnPlateau`, contrairement à l'ancien split 80/20
+train/val qui servait aux deux). Une dernière cellule dans chaque notebook montre comment
+recharger le modèle et prédire sur une image isolée.
+
+Les 3 notebooks pointent vers le même dossier d'images
+(`../../nutri-ia-data-collection/data/raw/images`) pour rester comparables entre eux —
+auparavant EfficientNet/MobileNetV2 et ResNet utilisaient des chemins différents.
 
 ## À savoir avant de réutiliser ces résultats
 
