@@ -1,0 +1,22 @@
+RAPPORT — EfficientNetB0 (Keras, classification, Phase 1 + Phase 2)
+============================================================
+
+Images train/val/test : 4610/988/988
+Classes : ['alloco', 'foutou', 'kedjenou', 'mafe', 'thieboudiene', 'yassa-poulet']
+
+Meilleure val_accuracy Phase 1 : 99.29%
+Meilleure val_accuracy Phase 2 : 95.24%
+
+Rapport de classification (test set) :
+              precision    recall  f1-score   support
+
+      alloco       0.95      0.99      0.97       165
+      foutou       0.95      0.95      0.95       165
+    kedjenou       0.95      0.95      0.95       165
+        mafe       0.96      0.93      0.94       163
+thieboudiene       0.96      0.97      0.96       165
+yassa-poulet       0.99      0.95      0.97       165
+
+    accuracy                           0.96       988
+   macro avg       0.96      0.96      0.96       988
+weighted avg       0.96      0.96      0.96       988

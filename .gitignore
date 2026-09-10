@@ -19,3 +19,6 @@ data/embeddings/*
 *.safetensors
 wandb/
 mlruns/
+
+# Modèles Keras exportés en .pt (notebooks/) — trop volumineux pour être versionnés
+notebooks/models/*.pt

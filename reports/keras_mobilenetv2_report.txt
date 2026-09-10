@@ -1,0 +1,22 @@
+RAPPORT — MobileNetV2 (Keras, classification, Phase 1 + Phase 2)
+============================================================
+
+Images train/val/test : 4610/988/988
+Classes : ['alloco', 'foutou', 'kedjenou', 'mafe', 'thieboudiene', 'yassa-poulet']
+
+Meilleure val_accuracy Phase 1 : 91.70%
+Meilleure val_accuracy Phase 2 : 93.22%
+
+Rapport de classification (test set) :
+              precision    recall  f1-score   support
+
+      alloco       0.95      1.00      0.98       165
+      foutou       0.93      0.95      0.94       165
+    kedjenou       0.93      0.92      0.93       165
+        mafe       0.94      0.94      0.94       163
+thieboudiene       0.99      0.94      0.97       165
+yassa-poulet       0.98      0.98      0.98       165
+
+    accuracy                           0.95       988
+   macro avg       0.95      0.95      0.95       988
+weighted avg       0.95      0.95      0.95       988
