@@ -80,5 +80,11 @@ s'appuyant sur un modèle fine-tuné dans le repo `nutri-ia-data-collection`, pa
 `models/embedding_model_finetuned.pt` produit par ce repo — d'où l'écart avec
 `reports/comparison_report.txt`, qui lui mesure bien le modèle local.
 
-Pour exécuter ces notebooks ici, il manque les dépendances TensorFlow/Keras
-(`tensorflow`, `jupyter`, `seaborn` — non listées dans `pyproject.toml` de ce repo).
+Les dépendances TensorFlow/Keras (`tensorflow`, `jupyter`, `seaborn`, `onnx`, `onnx2torch`,
+`tf2onnx`) sont dans le groupe optionnel `notebooks` de `pyproject.toml`, pas dans les
+dépendances de base — elles ne sont utilisées que par ces notebooks, pas par le pipeline
+d'embedding PyTorch. Pour les installer :
+
+```bash
+uv sync --extra notebooks
+```

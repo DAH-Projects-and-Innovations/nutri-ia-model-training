@@ -57,6 +57,10 @@ Activer l'environnement virtuel :
 source .venv/bin/activate
 ```
 
+> Les notebooks d'expérimentation de `notebooks/` (fine-tuning Keras/TensorFlow, voir
+> [`notebooks/README.md`](notebooks/README.md)) ont leurs propres dépendances, à installer avec
+> `uv sync --extra notebooks`.
+
 ## 🧪 Utilisation
 
 _À compléter au fur et à mesure de l'avancement du projet (commandes d'entraînement, d'évaluation, etc.)._
