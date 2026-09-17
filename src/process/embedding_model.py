@@ -200,6 +200,10 @@ class FoodEmbeddingModel(nn.Module):
         self.normalize_output = normalize_output
         self.embedding_dim = embedding_dim
         self.backbone_name = backbone_name
+        self._backbone_frozen = False
+
+        if freeze_backbone:
+            self._backbone_frozen = (unfreeze_last_n_blocks == 0)
 
     # ------------------------------------------------------------------
     # Gestion du gel des paramètres
@@ -230,7 +234,26 @@ class FoodEmbeddingModel(nn.Module):
         """Dégèle tous les paramètres du backbone."""
         for param in self.backbone.parameters():
             param.requires_grad = True
+        self._backbone_frozen = False
         logger.info("Backbone entièrement dégelé.")
+
+    def train(self, mode: bool = True) -> "FoodEmbeddingModel":
+        """
+        Passe le modèle en mode entraînement (ou évaluation si ``mode=False``).
+
+        Si le backbone est entièrement gelé, il est maintenu en ``eval()`` même
+        quand le reste du modèle passe en ``train()``. Sans ça, ses BatchNorm
+        continueraient à mettre à jour leurs statistiques courantes
+        (running_mean/running_var) sur les batches d'entraînement malgré
+        ``requires_grad=False`` — ce comportement dépend du mode train/eval du
+        module, pas de ``requires_grad`` — et ses features dériveraient loin de
+        leur calibration d'origine (ImageNet) sans qu'aucun poids n'ait
+        officiellement bougé.
+        """
+        super().train(mode)
+        if mode and self._backbone_frozen:
+            self.backbone.eval()
+        return self
 
     # ------------------------------------------------------------------
     # Passes forward
