@@ -13,13 +13,14 @@ Installe d'abord :
     uv add scikit-learn
 """
 
+import re
 import sys
 from pathlib import Path
 
 import h5py
 import numpy as np
 
-# Configuration 
+# Configuration
 EMBEDDINGS_H5 = Path("data/processed/embeddings/embeddings.h5")
 REPORT_DIR    = Path("reports")
 REPORT_DIR.mkdir(exist_ok=True)
@@ -35,13 +36,43 @@ NOM_CLASSES = {
 }
 
 
-def recall_at_k(embeddings: np.ndarray, labels: np.ndarray, k: int) -> float:
+def source_group_id(path_str: str) -> str:
+    """
+    Identifiant de la photo source à partir du nom de fichier, pour repérer les
+    variantes augmentées d'une même photo (ex. ``alloco_001_pil_env_...jpg`` et
+    ``alloco_001_sd_omelette.jpg`` → même groupe ``"alloco_001"``). Chaque photo
+    d'origine a été déclinée en plusieurs variantes augmentées (même sujet,
+    juste l'éclairage/fond qui change) — sans les exclure de la recherche de
+    plus proches voisins, le Recall@K est gonflé artificiellement : une
+    variante retrouve trivialement une autre variante de la même photo comme
+    "voisin le plus proche", ce qui ne mesure pas une vraie généralisation à
+    des photos différentes du même plat.
+
+    Si le nom de fichier ne suit pas ce schéma, il reste son propre groupe
+    (comportement inchangé — le cas d'une photo sans variante).
+    """
+    stem = Path(path_str).stem
+    match = re.match(r"^(.+?_\d+)", stem)
+    return match.group(1) if match else stem
+
+
+def _same_group_mask(group_ids: np.ndarray) -> np.ndarray:
+    """Matrice (N, N) : True où deux images appartiennent à la même photo source."""
+    return group_ids[:, None] == group_ids[None, :]
+
+
+def recall_at_k(
+    embeddings: np.ndarray, labels: np.ndarray, exclude_mask: np.ndarray, k: int
+) -> float:
     """
     Pour chaque image, cherche les K plus proches voisins.
     Succès si au moins 1 voisin est du même plat.
 
     Utilise le produit scalaire comme similarité
     (fonctionne car les vecteurs sont normalisés L2).
+
+    ``exclude_mask[i, j] == True`` exclut j des voisins possibles de i (image
+    elle-même et ses variantes augmentées — voir ``source_group_id``).
     """
     N = len(embeddings)
     succes = 0
@@ -49,14 +80,11 @@ def recall_at_k(embeddings: np.ndarray, labels: np.ndarray, k: int) -> float:
     # Matrice de similarité complète (N × N)
     # embeddings @ embeddings.T = produit scalaire entre toutes les paires
     sims = embeddings @ embeddings.T   # (N, N)
+    sims[exclude_mask] = -999.0
 
     for i in range(N):
-        # Ignorer l'image elle-même (similarité = 1.0 avec elle-même)
-        sims_i = sims[i].copy()
-        sims_i[i] = -999.0
-
         # Indices des K plus proches (tri décroissant)
-        top_k_idx = np.argsort(sims_i)[::-1][:k]
+        top_k_idx = np.argsort(sims[i])[::-1][:k]
 
         # Est-ce qu'au moins un voisin est du même plat ?
         if labels[i] in labels[top_k_idx]:
@@ -65,18 +93,19 @@ def recall_at_k(embeddings: np.ndarray, labels: np.ndarray, k: int) -> float:
     return succes / N
 
 
-def precision_at_k(embeddings: np.ndarray, labels: np.ndarray, k: int) -> float:
+def precision_at_k(
+    embeddings: np.ndarray, labels: np.ndarray, exclude_mask: np.ndarray, k: int
+) -> float:
     """
     Parmi les K plus proches voisins, quelle fraction est du même plat ?
     """
     N = len(embeddings)
     sims = embeddings @ embeddings.T
+    sims[exclude_mask] = -999.0
 
     total_precision = 0.0
     for i in range(N):
-        sims_i = sims[i].copy()
-        sims_i[i] = -999.0
-        top_k_idx   = np.argsort(sims_i)[::-1][:k]
+        top_k_idx   = np.argsort(sims[i])[::-1][:k]
         meme_classe = np.sum(labels[top_k_idx] == labels[i])
         total_precision += meme_classe / k
 
@@ -84,17 +113,16 @@ def precision_at_k(embeddings: np.ndarray, labels: np.ndarray, k: int) -> float:
 
 
 def recall_par_classe(
-    embeddings: np.ndarray, labels: np.ndarray, k: int
+    embeddings: np.ndarray, labels: np.ndarray, exclude_mask: np.ndarray, k: int
 ) -> dict[int, float]:
     """Calcule le Recall@K pour chaque classe séparément."""
     N     = len(embeddings)
     sims  = embeddings @ embeddings.T
+    sims[exclude_mask] = -999.0
     resultats: dict[int, list[int]] = {}
 
     for i in range(N):
-        sims_i = sims[i].copy()
-        sims_i[i] = -999.0
-        top_k_idx = np.argsort(sims_i)[::-1][:k]
+        top_k_idx = np.argsort(sims[i])[::-1][:k]
         cls = int(labels[i])
 
         if cls not in resultats:
@@ -122,6 +150,7 @@ def evaluer():
     with h5py.File(EMBEDDINGS_H5, "r") as f:
         embeddings = f["embeddings"][:]
         labels     = f["labels"][:] if "labels" in f else None
+        paths      = f["paths"][:] if "paths" in f else None
 
     if labels is None:
         print("  ✗   Pas de labels dans le fichier — impossible de calculer le Recall@K")
@@ -131,6 +160,20 @@ def evaluer():
     n_classes = len(np.unique(labels))
     print(f"  {N} embeddings · {D}D · {n_classes} classes chargés")
 
+    # Identifiant de photo source par image, pour exclure les variantes
+    # augmentées d'une même photo de la recherche de plus proches voisins
+    # (voir source_group_id) — sinon le Recall@K est gonflé artificiellement.
+    if paths is not None:
+        group_ids = np.array([
+            source_group_id(p.decode() if isinstance(p, bytes) else p) for p in paths
+        ])
+        n_groups = len(np.unique(group_ids))
+        print(f"  {n_groups} photos sources distinctes détectées (variantes augmentées exclues des voisins)")
+    else:
+        print("  ▲  Pas de chemins dans le fichier — impossible d'exclure les variantes augmentées,")
+        print("     le Recall@K peut être surestimé si le dataset contient des quasi-doublons.")
+        group_ids = np.arange(N)  # chaque image son propre groupe (comportement précédent)
+
     # Sous-échantillonnage si trop d'images (calcul lent sur > 3000)
     MAX_EVAL = 2000
     if N > MAX_EVAL:
@@ -139,7 +182,10 @@ def evaluer():
         # Assure représentation de toutes les classes
         embeddings = embeddings[idx]
         labels     = labels[idx]
+        group_ids  = group_ids[idx]
         N          = MAX_EVAL
+
+    exclude_mask = _same_group_mask(group_ids)
 
     # Recall@K global 
     print("\n[2] Calcul du Recall@K global...")
@@ -151,7 +197,7 @@ def evaluer():
     resultats_recall = {}
 
     for k in [1, 3, 5, 10]:
-        score = recall_at_k(embeddings, labels, k)
+        score = recall_at_k(embeddings, labels, exclude_mask, k)
         resultats_recall[k] = score
         seuil = seuils.get(k, 0.70)
 
@@ -174,7 +220,7 @@ def evaluer():
     print("─" * 60)
 
     for k in [1, 5, 10]:
-        score = precision_at_k(embeddings, labels, k)
+        score = precision_at_k(embeddings, labels, exclude_mask, k)
         print(
             f"  K={k:>2}  {score:>10.1%}   "
             f"En moyenne {score:.0%} des {k} voisins sont du bon plat"
@@ -186,7 +232,7 @@ def evaluer():
     print(f"  {'Plat':25s}  {'Recall@5':>10}  {'Statut':>15}")
     print("─" * 60)
 
-    recall_classes = recall_par_classe(embeddings, labels, k=5)
+    recall_classes = recall_par_classe(embeddings, labels, exclude_mask, k=5)
     for cls_idx in sorted(recall_classes.keys()):
         score = recall_classes[cls_idx]
         nom   = NOM_CLASSES.get(cls_idx, f"classe_{cls_idx}")
@@ -205,11 +251,11 @@ def evaluer():
     print("  On prend 5 images au hasard et on cherche leurs 3 voisins.\n")
 
     sims_full = embeddings @ embeddings.T
+    sims_full[exclude_mask] = -999.0
 
     indices_test = np.random.choice(N, 5, replace=False)
     for i, idx_query in enumerate(indices_test):
-        sims_q = sims_full[idx_query].copy()
-        sims_q[idx_query] = -999.0
+        sims_q = sims_full[idx_query]
         top3   = np.argsort(sims_q)[::-1][:3]
 
         nom_q  = NOM_CLASSES.get(int(labels[idx_query]), "?")
@@ -229,7 +275,11 @@ def evaluer():
         f.write("=" * 60 + "\n\n")
         f.write(f"Images évaluées : {N}\n")
         f.write(f"Dimension       : {D}D\n")
-        f.write(f"Classes         : {n_classes}\n\n")
+        f.write(f"Classes         : {n_classes}\n")
+        f.write(
+            "Variantes augmentées de la même photo exclues des voisins "
+            f"({'oui' if paths is not None else 'non — chemins indisponibles'})\n\n"
+        )
         f.write("RECALL@K GLOBAL\n" + "-" * 40 + "\n")
         for k, score in resultats_recall.items():
             f.write(f"  Recall@{k:2d} = {score:.1%}\n")
