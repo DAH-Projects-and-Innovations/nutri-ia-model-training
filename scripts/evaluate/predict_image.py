@@ -7,6 +7,7 @@ C'est le test le plus concret pour évaluer les performances.
 Usage :
     python scripts/evaluate/predict_image.py --image chemin/vers/photo.jpg
     python scripts/evaluate/predict_image.py --image data/test/photo_thieb.jpg
+    python scripts/evaluate/predict_image.py --image photo.jpg --checkpoint models/embedding_model_base.pt
 """
 
 import argparse
@@ -17,9 +18,16 @@ import numpy as np
 import torch
 from PIL import Image
 
-# Chemin vers le modèle et les embeddings
-EMBEDDINGS_H5  = Path("data/processed/embeddings/embeddings.h5")
-MODEL_PT       = Path("models/embedding_model.pt")
+# Chemin vers les embeddings
+EMBEDDINGS_H5 = Path("data/processed/embeddings/embeddings.h5")
+
+# Checkpoints essayés dans cet ordre si --checkpoint n'est pas précisé.
+# Les .pt ne sont pas versionnés (trop volumineux) — voir README pour les régénérer
+# (scripts/save_base_model.py, src/training/finetune_embedding.py).
+DEFAULT_CHECKPOINTS = [
+    Path("models/embedding_model_finetuned.pt"),
+    Path("models/embedding_model_base.pt"),
+]
 
 NOM_CLASSES = {
     0: "Alloco",
@@ -30,7 +38,25 @@ NOM_CLASSES = {
     5: "Yassa poulet",
 }
 
-def predire(image_path: str):
+
+def resolve_checkpoint(checkpoint_arg: str | None) -> Path | None:
+    """
+    Résout le checkpoint à charger : celui passé explicitement en argument,
+    sinon le premier des ``DEFAULT_CHECKPOINTS`` qui existe, sinon ``None``
+    (pas de checkpoint — modèle jamais entraîné).
+    """
+    if checkpoint_arg:
+        path = Path(checkpoint_arg)
+        if not path.exists():
+            raise FileNotFoundError(f"Checkpoint introuvable : {path}")
+        return path
+    for candidate in DEFAULT_CHECKPOINTS:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def predire(image_path: str, checkpoint_arg: str | None = None):
     from src.process.embedding_model import FoodEmbeddingModel
     from src.utils.image_utils import get_inference_transforms
 
@@ -39,15 +65,18 @@ def predire(image_path: str):
     print("═" * 60)
     print(f"\n  Image : {image_path}\n")
 
-    #  Étape 1 : Charger le modèle 
+    #  Étape 1 : Charger le modèle
     print("[1] Chargement du modèle...")
-    if MODEL_PT.exists():
-        model = FoodEmbeddingModel.load(MODEL_PT)
-        print(f"  Modèle chargé depuis {MODEL_PT}")
+    checkpoint_path = resolve_checkpoint(checkpoint_arg)
+    if checkpoint_path is not None:
+        model = FoodEmbeddingModel.load(checkpoint_path)
+        print(f"  Modèle chargé depuis {checkpoint_path}")
     else:
-        from src.config.settings import embed_cfg
         model = FoodEmbeddingModel.from_config(freeze_backbone=True)
-        print("  Modèle créé depuis la config (pas de checkpoint)")
+        print("  ▲  Aucun checkpoint trouvé (models/embedding_model_finetuned.pt ou _base.pt).")
+        print("     Modèle créé depuis la config, jamais entraîné — résultats non fiables.")
+        print("     Génère un checkpoint : scripts/save_base_model.py ou")
+        print("     src/training/finetune_embedding.py (voir README).")
     model.eval()
 
     #  Étape 2 : Préparer l'image 
@@ -148,5 +177,14 @@ if __name__ == "__main__":
         required=True,
         help="Chemin vers l'image à tester (JPG ou PNG)"
     )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Chemin vers un checkpoint .pt. Défaut : "
+            "models/embedding_model_finetuned.pt puis models/embedding_model_base.pt."
+        ),
+    )
     args = parser.parse_args()
-    predire(args.image)
+    predire(args.image, args.checkpoint)

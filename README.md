@@ -63,4 +63,47 @@ source .venv/bin/activate
 
 ## 🧪 Utilisation
 
-_À compléter au fur et à mesure de l'avancement du projet (commandes d'entraînement, d'évaluation, etc.)._
+### Modèles (.pt)
+
+Les checkpoints du modèle d'embedding (`models/*.pt`) **ne sont pas versionnés** (trop
+volumineux pour GitHub) — il faut les générer localement :
+
+```bash
+# Modèle de base (backbone gelé, tête de projection non entraînée)
+uv run python scripts/save_base_model.py
+# → models/embedding_model_base.pt
+
+# Modèle fine-tuné (Triplet Loss sur la tête de projection)
+uv run python src/training/finetune_embedding.py --data-dir /chemin/vers/images
+# → models/embedding_model_finetuned.pt (sauvegardé au meilleur epoch, sur la loss de validation)
+```
+
+`--data-dir` est optionnel (défaut : `data/processed/images` du repo, vide par défaut — les
+images viennent de `nutri-ia-data-collection`, voir plus haut).
+
+### Pipeline complet
+
+```bash
+# 1. Prétraitement des images brutes (raw → processed)
+uv run python main.py prepare --input /chemin/vers/images/brutes
+
+# 2. Génération des embeddings avec un checkpoint donné
+uv run python main.py embed --checkpoint models/embedding_model_finetuned.pt
+
+# 3. Évaluation — Recall@K / Precision@K (exclut les variantes augmentées d'une même
+#    photo source de la recherche de voisins, voir scripts/evaluate/compute_recall.py)
+uv run python scripts/evaluate/compute_recall.py
+
+# 4. Prédiction sur une image isolée (utilise embedding_model_finetuned.pt par défaut,
+#    sinon embedding_model_base.pt — voir --checkpoint pour forcer un autre modèle)
+uv run python scripts/evaluate/predict_image.py --image chemin/vers/photo.jpg
+
+# 5. Visualisation t-SNE des embeddings
+uv run python scripts/evaluate/visualize_embeddings.py
+```
+
+### Tests
+
+```bash
+uv run --with pytest python -m pytest tests/
+```
