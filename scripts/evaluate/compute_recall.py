@@ -21,9 +21,15 @@ import h5py
 import numpy as np
 
 # Configuration
-EMBEDDINGS_H5 = Path("data/processed/embeddings/embeddings.h5")
-REPORT_DIR    = Path("reports")
+EMBEDDINGS_H5   = Path("data/processed/embeddings/embeddings.h5")
+REPORT_DIR      = Path("reports")
 REPORT_DIR.mkdir(exist_ok=True)
+# Écrit par src/training/finetune_embedding.py — si présent, restreint les
+# requêtes de l'évaluation à ces images (jamais vues en train/val), tout en
+# gardant tout le corpus comme galerie de recherche. Sinon, comportement par
+# défaut : leave-one-out sur tout le corpus (utile pour le modèle base, qui
+# n'a pas de split dédié).
+TEST_PATHS_FILE = Path("reports/embedding_test_paths.txt")
 
 NOM_CLASSES = {
     0: "Alloco",
@@ -62,10 +68,14 @@ def _same_group_mask(group_ids: np.ndarray) -> np.ndarray:
 
 
 def recall_at_k(
-    embeddings: np.ndarray, labels: np.ndarray, exclude_mask: np.ndarray, k: int
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    exclude_mask: np.ndarray,
+    k: int,
+    query_indices: np.ndarray | None = None,
 ) -> float:
     """
-    Pour chaque image, cherche les K plus proches voisins.
+    Pour chaque image requête, cherche les K plus proches voisins.
     Succès si au moins 1 voisin est du même plat.
 
     Utilise le produit scalaire comme similarité
@@ -73,16 +83,21 @@ def recall_at_k(
 
     ``exclude_mask[i, j] == True`` exclut j des voisins possibles de i (image
     elle-même et ses variantes augmentées — voir ``source_group_id``).
+
+    ``query_indices`` restreint les images évaluées (les "i") à ce sous-ensemble
+    (ex. le test set jamais vu) tout en gardant tout ``embeddings`` comme galerie
+    de recherche. ``None`` = toutes les images (comportement leave-one-out complet).
     """
     N = len(embeddings)
+    indices = query_indices if query_indices is not None else np.arange(N)
     succes = 0
 
-    # Matrice de similarité complète (N × N)
-    # embeddings @ embeddings.T = produit scalaire entre toutes les paires
+    # Matrice de similarité complète (N × N) — la galerie reste tout le corpus
+    # même quand on ne boucle que sur un sous-ensemble de requêtes.
     sims = embeddings @ embeddings.T   # (N, N)
     sims[exclude_mask] = -999.0
 
-    for i in range(N):
+    for i in indices:
         # Indices des K plus proches (tri décroissant)
         top_k_idx = np.argsort(sims[i])[::-1][:k]
 
@@ -90,38 +105,48 @@ def recall_at_k(
         if labels[i] in labels[top_k_idx]:
             succes += 1
 
-    return succes / N
+    return succes / len(indices)
 
 
 def precision_at_k(
-    embeddings: np.ndarray, labels: np.ndarray, exclude_mask: np.ndarray, k: int
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    exclude_mask: np.ndarray,
+    k: int,
+    query_indices: np.ndarray | None = None,
 ) -> float:
     """
     Parmi les K plus proches voisins, quelle fraction est du même plat ?
     """
     N = len(embeddings)
+    indices = query_indices if query_indices is not None else np.arange(N)
     sims = embeddings @ embeddings.T
     sims[exclude_mask] = -999.0
 
     total_precision = 0.0
-    for i in range(N):
+    for i in indices:
         top_k_idx   = np.argsort(sims[i])[::-1][:k]
         meme_classe = np.sum(labels[top_k_idx] == labels[i])
         total_precision += meme_classe / k
 
-    return total_precision / N
+    return total_precision / len(indices)
 
 
 def recall_par_classe(
-    embeddings: np.ndarray, labels: np.ndarray, exclude_mask: np.ndarray, k: int
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    exclude_mask: np.ndarray,
+    k: int,
+    query_indices: np.ndarray | None = None,
 ) -> dict[int, float]:
     """Calcule le Recall@K pour chaque classe séparément."""
     N     = len(embeddings)
+    indices = query_indices if query_indices is not None else np.arange(N)
     sims  = embeddings @ embeddings.T
     sims[exclude_mask] = -999.0
     resultats: dict[int, list[int]] = {}
 
-    for i in range(N):
+    for i in indices:
         top_k_idx = np.argsort(sims[i])[::-1][:k]
         cls = int(labels[i])
 
@@ -164,19 +189,48 @@ def evaluer():
     # augmentées d'une même photo de la recherche de plus proches voisins
     # (voir source_group_id) — sinon le Recall@K est gonflé artificiellement.
     if paths is not None:
-        group_ids = np.array([
-            source_group_id(p.decode() if isinstance(p, bytes) else p) for p in paths
-        ])
+        paths_decoded = [p.decode() if isinstance(p, bytes) else p for p in paths]
+        group_ids = np.array([source_group_id(p) for p in paths_decoded])
         n_groups = len(np.unique(group_ids))
         print(f"  {n_groups} photos sources distinctes détectées (variantes augmentées exclues des voisins)")
     else:
+        paths_decoded = None
         print("  ▲  Pas de chemins dans le fichier — impossible d'exclure les variantes augmentées,")
         print("     le Recall@K peut être surestimé si le dataset contient des quasi-doublons.")
         group_ids = np.arange(N)  # chaque image son propre groupe (comportement précédent)
 
-    # Sous-échantillonnage si trop d'images (calcul lent sur > 3000)
+    # Split de test — si finetune_embedding.py en a écrit un, on restreint les
+    # requêtes à ces images jamais vues en train/val, sans réduire la galerie de
+    # recherche (tout le corpus reste disponible comme voisins possibles).
+    query_indices = None
+    n_test_matched = 0
+    if TEST_PATHS_FILE.exists() and paths_decoded is not None:
+        with open(TEST_PATHS_FILE) as f:
+            test_paths_resolved = {
+                str(Path(line.strip()).resolve()) for line in f if line.strip()
+            }
+        paths_resolved = [str(Path(p).resolve()) for p in paths_decoded]
+        query_indices = np.array(
+            [i for i, p in enumerate(paths_resolved) if p in test_paths_resolved]
+        )
+        n_test_matched = len(query_indices)
+        if n_test_matched == 0:
+            print(f"\n  ▲  {TEST_PATHS_FILE} trouvé mais aucune image ne correspond aux chemins de")
+            print("     embeddings.h5 — vérifie que 'main.py embed' a tourné sur le même dossier")
+            print("     que --data-dir de finetune_embedding.py. Évaluation en mode complet (fallback).")
+            query_indices = None
+        else:
+            print(
+                f"\n  Split de test détecté ({TEST_PATHS_FILE}) — {n_test_matched}/"
+                f"{len(test_paths_resolved)} images de test retrouvées, utilisées comme "
+                f"requêtes (galerie = les {N} images complètes)"
+            )
+
+    # Sous-échantillonnage si trop d'images (calcul lent sur > 3000) — seulement
+    # en mode leave-one-out complet ; en mode test dédié, la galerie doit rester
+    # entière et le nombre de requêtes (le test set) est déjà raisonnable.
     MAX_EVAL = 2000
-    if N > MAX_EVAL:
+    if query_indices is None and N > MAX_EVAL:
         print(f"\n  Sous-échantillonnage à {MAX_EVAL} images pour la rapidité...")
         idx        = np.random.choice(N, MAX_EVAL, replace=False, )
         # Assure représentation de toutes les classes
@@ -197,7 +251,7 @@ def evaluer():
     resultats_recall = {}
 
     for k in [1, 3, 5, 10]:
-        score = recall_at_k(embeddings, labels, exclude_mask, k)
+        score = recall_at_k(embeddings, labels, exclude_mask, k, query_indices)
         resultats_recall[k] = score
         seuil = seuils.get(k, 0.70)
 
@@ -220,7 +274,7 @@ def evaluer():
     print("─" * 60)
 
     for k in [1, 5, 10]:
-        score = precision_at_k(embeddings, labels, exclude_mask, k)
+        score = precision_at_k(embeddings, labels, exclude_mask, k, query_indices)
         print(
             f"  K={k:>2}  {score:>10.1%}   "
             f"En moyenne {score:.0%} des {k} voisins sont du bon plat"
@@ -232,7 +286,7 @@ def evaluer():
     print(f"  {'Plat':25s}  {'Recall@5':>10}  {'Statut':>15}")
     print("─" * 60)
 
-    recall_classes = recall_par_classe(embeddings, labels, exclude_mask, k=5)
+    recall_classes = recall_par_classe(embeddings, labels, exclude_mask, k=5, query_indices=query_indices)
     for cls_idx in sorted(recall_classes.keys()):
         score = recall_classes[cls_idx]
         nom   = NOM_CLASSES.get(cls_idx, f"classe_{cls_idx}")
@@ -253,7 +307,8 @@ def evaluer():
     sims_full = embeddings @ embeddings.T
     sims_full[exclude_mask] = -999.0
 
-    indices_test = np.random.choice(N, 5, replace=False)
+    pool_simulation = query_indices if query_indices is not None else np.arange(N)
+    indices_test = np.random.choice(pool_simulation, min(5, len(pool_simulation)), replace=False)
     for i, idx_query in enumerate(indices_test):
         sims_q = sims_full[idx_query]
         top3   = np.argsort(sims_q)[::-1][:3]
@@ -273,7 +328,13 @@ def evaluer():
     with open(rapport_path, "w", encoding="utf-8") as f:
         f.write("RAPPORT D'ÉVALUATION — MODÈLE D'EMBEDDING NUTRI-IA\n")
         f.write("=" * 60 + "\n\n")
-        f.write(f"Images évaluées : {N}\n")
+        if query_indices is not None:
+            f.write(f"Protocole       : test set dédié, jamais vu en train/val ({TEST_PATHS_FILE})\n")
+            f.write(f"Images requêtes : {len(query_indices)}\n")
+            f.write(f"Galerie (voisins possibles) : {N} images (tout le corpus)\n")
+        else:
+            f.write("Protocole       : leave-one-out sur tout le corpus (pas de split de test dédié)\n")
+            f.write(f"Images évaluées : {N}\n")
         f.write(f"Dimension       : {D}D\n")
         f.write(f"Classes         : {n_classes}\n")
         f.write(
