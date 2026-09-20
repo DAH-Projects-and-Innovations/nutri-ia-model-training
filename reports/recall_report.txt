@@ -1,0 +1,23 @@
+RAPPORT D'ÉVALUATION — MODÈLE D'EMBEDDING NUTRI-IA
+============================================================
+
+Images évaluées : 2000
+Dimension       : 256D
+Classes         : 6
+Variantes augmentées de la même photo exclues des voisins (oui)
+
+RECALL@K GLOBAL
+----------------------------------------
+  Recall@ 1 = 94.9%
+  Recall@ 3 = 97.4%
+  Recall@ 5 = 97.8%
+  Recall@10 = 98.4%
+
+RECALL@5 PAR CLASSE
+----------------------------------------
+  Alloco                    : 100.0%
+  Foutou                    : 98.6%
+  Kedjenou                  : 96.8%
+  Mafé                      : 96.2%
+  Thiéboudiene              : 97.2%
+  Yassa poulet              : 97.9%

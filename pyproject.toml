@@ -1,7 +1,32 @@
 [project]
-name = "nutri-ia-model-training"
+name = "nutri-ia-data-collection"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "h5py>=3.11.0,<3.15.0",
+    "loguru>=0.7.3",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.1",
+    "pandas>=3.0.5",
+    "pillow>=12.2.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "scikit-learn>=1.9.0",
+    "timm>=1.0.28",
+    "torch>=2.13.0",
+]
+
+[project.optional-dependencies]
+# Stack Keras/TensorFlow utilisée uniquement par notebooks/fine_tuning_*.ipynb
+# (expérimentations de classification, indépendantes du pipeline d'embedding PyTorch).
+# uv sync --extra notebooks
+notebooks = [
+    "jupyter>=1.1.1",
+    "onnx>=1.22.0",
+    "onnx2torch>=1.5.15",
+    "seaborn>=0.13.2",
+    "tensorflow>=2.21.0",
+    "tf2onnx>=1.17.0",
+]
