@@ -46,8 +46,12 @@ EPOCHS      = 20
 LR          = 1e-4
 BATCH_SIZE  = 32
 VAL_SPLIT   = 0.15
+TEST_SPLIT  = 0.15  # jamais vu en entraînement NI en validation — même ratio que les
+                    # notebooks Keras (70/15/15), pour une comparaison base/fine-tuné
+                    # honnête entre les deux approches.
 SEED        = 42
 DEVICE      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+TEST_PATHS_FILE = Path("reports/embedding_test_paths.txt")
 
 print(f"Device utilisé : {DEVICE}")
 print(f"Dossier d'images : {DATA_DIR}")
@@ -104,23 +108,45 @@ for idx, img_path in enumerate(dataset_train_view.image_paths):
 
 group_ids = list(groups.keys())
 n_total = len(dataset_train_view)
-n_val_target = int(n_total * VAL_SPLIT)
+n_test_target = int(n_total * TEST_SPLIT)
+n_val_target  = int(n_total * VAL_SPLIT)
 
 shuffled_groups = torch.randperm(
     len(group_ids), generator=torch.Generator().manual_seed(SEED)
 ).tolist()
 
+# Test réservé en premier, jamais touché par l'entraînement ni la sélection du
+# meilleur checkpoint (val) — sert uniquement à l'évaluation finale, pour une
+# comparaison à armes égales avec le protocole des notebooks Keras.
+test_indices: list[int]  = []
+val_indices: list[int]   = []
 train_indices: list[int] = []
-val_indices: list[int] = []
 for i in shuffled_groups:
-    target = val_indices if len(val_indices) < n_val_target else train_indices
-    target.extend(groups[group_ids[i]])
+    if len(test_indices) < n_test_target:
+        bucket = test_indices
+    elif len(val_indices) < n_val_target:
+        bucket = val_indices
+    else:
+        bucket = train_indices
+    bucket.extend(groups[group_ids[i]])
 
 n_train = len(train_indices)
 n_val   = len(val_indices)
+n_test  = len(test_indices)
 
 train_dataset = Subset(dataset_train_view, train_indices)
 val_dataset   = Subset(dataset_val_view, val_indices)
+# Pas de test_dataset/loader ici : le test set n'est jamais passé au modèle dans
+# ce script, seulement réservé. L'évaluation finale se fait après-coup par
+# compute_recall.py, sur les embeddings régénérés pour tout le corpus.
+
+# Sauvegarde des chemins du test set — nécessaire pour restreindre l'évaluation
+# finale (compute_recall.py) à ces images jamais vues, plutôt que tout le corpus.
+TEST_PATHS_FILE.parent.mkdir(parents=True, exist_ok=True)
+test_paths = [str(dataset_train_view.image_paths[i]) for i in test_indices]
+with open(TEST_PATHS_FILE, "w") as f:
+    f.write("\n".join(test_paths))
+print(f"Split de test sauvegardé → {TEST_PATHS_FILE} ({n_test} images, jamais vues en train/val)")
 
 train_loader = DataLoader(
     train_dataset,
@@ -137,7 +163,7 @@ val_loader = DataLoader(
     drop_last=False,
 )
 
-print(f"\nEntraînement sur {n_train} images / validation sur {n_val} images, {EPOCHS} epochs")
+print(f"\nEntraînement sur {n_train} images / validation sur {n_val} images / test {n_test} images (réservé), {EPOCHS} epochs")
 print(f"Batches par epoch (train) : {len(train_loader)}")
 print(f"Classes : {dataset_train_view.classes}\n")
 
@@ -280,11 +306,13 @@ print("  FINE-TUNING TERMINÉ")
 print("═" * 60)
 print(f"  Meilleure val_loss : {best_val_loss:.4f}")
 print(f"  Modèle sauvegardé  : models/embedding_model_finetuned.pt")
+print(f"  Split de test      : {TEST_PATHS_FILE} ({n_test} images, jamais entraînées)")
 print()
 print("  Prochaines étapes :")
-print("  1. Régénérer les embeddings avec le nouveau modèle :")
+print("  1. Régénérer les embeddings (tout le corpus, sert de galerie de recherche) :")
 print("     python main.py embed --checkpoint models/embedding_model_finetuned.pt")
-print("  2. Réévaluer :")
+print("  2. Réévaluer — restreint automatiquement aux images de test si")
+print(f"     {TEST_PATHS_FILE} existe :")
 print("     python scripts/evaluate/compute_recall.py")
 print("  3. Visualiser :")
 print("     python scripts/evaluate/visualize_embeddings.py")

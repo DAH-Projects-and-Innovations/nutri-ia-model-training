@@ -22,3 +22,7 @@ mlruns/
 
 # Modèles Keras exportés en .pt (notebooks/) — trop volumineux pour être versionnés
 notebooks/models/*.pt
+
+# Chemins absolus propres à la machine locale (écrit par finetune_embedding.py,
+# lu par compute_recall.py) — pas portable, pas utile aux autres contributeurs.
+reports/embedding_test_paths.txt
